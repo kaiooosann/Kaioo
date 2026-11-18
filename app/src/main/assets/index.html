@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#101418">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Volume da Central</title>
+<style>
+  :root {
+    --bg: #101418; --card: #1a2027; --text: #eef2f6; --muted: #8a97a4;
+    --accent: #3fa7ff; --accent2: #1f6fb8; --danger: #ff5a5a; --ok: #3ddc84;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, Roboto, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 16px; user-select: none;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 8px 0 2px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; text-align: center; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-right: 6px; }
+  .dot.on { background: var(--ok); }
+  .card { background: var(--card); border-radius: 20px; padding: 20px; width: 100%; max-width: 420px; margin-bottom: 14px; }
+  .big { font-size: 72px; font-weight: 700; text-align: center; line-height: 1; font-variant-numeric: tabular-nums; }
+  .big small { font-size: 22px; color: var(--muted); font-weight: 500; }
+  .bar { height: 10px; background: #0b0e11; border-radius: 6px; overflow: hidden; margin: 16px 0 20px; }
+  .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .15s; }
+  .row { display: flex; gap: 12px; }
+  button {
+    flex: 1; border: 0; border-radius: 16px; padding: 22px 0; font-size: 34px; font-weight: 700;
+    background: var(--accent2); color: #fff; touch-action: manipulation;
+  }
+  button:active { transform: scale(.96); filter: brightness(1.2); }
+  button.sec { background: #2a323b; font-size: 16px; padding: 14px 0; font-weight: 600; }
+  button.mute.on { background: var(--danger); }
+  input[type=range] { width: 100%; margin: 18px 0 6px; accent-color: var(--accent); height: 32px; }
+  label { color: var(--muted); font-size: 13px; display: block; margin-bottom: 6px; }
+  select {
+    width: 100%; padding: 12px; border-radius: 12px; border: 0; background: #2a323b;
+    color: var(--text); font-size: 15px;
+  }
+  .opt { display: flex; align-items: center; gap: 10px; margin-top: 14px; color: var(--muted); font-size: 14px; }
+  .opt input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .all { font-size: 13px; color: var(--muted); line-height: 1.7; }
+  .all b { color: var(--text); font-weight: 500; }
+  .err { color: var(--danger); font-size: 13px; text-align: center; min-height: 18px; }
+</style>
+</head>
+<body>
+  <h1>Volume da Central</h1>
+  <div class="sub"><span id="dot" class="dot"></span><span id="dev">Conectando...</span></div>
+
+  <div class="card">
+    <div class="big"><span id="cur">--</span><small> / <span id="max">--</span></small></div>
+    <div class="bar"><div id="fill"></div></div>
+    <div class="row">
+      <button id="down" aria-label="Diminuir">−</button>
+      <button id="up" aria-label="Aumentar">+</button>
+    </div>
+    <input id="slider" type="range" min="0" max="15" value="0">
+    <div class="row">
+      <button class="sec mute" id="mute">Mudo</button>
+      <button class="sec" id="maxBtn">Máximo</button>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="card">
+    <label for="stream">Qual volume controlar</label>
+    <select id="stream">
+      <option value="music">Mídia / Música (padrão)</option>
+      <option value="call">Chamada</option>
+      <option value="ring">Toque</option>
+      <option value="notification">Notificação</option>
+      <option value="alarm">Alarme</option>
+      <option value="system">Sistema</option>
+      <option value="accessibility">Acessibilidade</option>
+    </select>
+    <label class="opt"><input type="checkbox" id="keyMode"> Imitar o botão físico de volume (teste se o normal não funcionar)</label>
+  </div>
+
+  <div class="card all" id="all"></div>
+
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  var state = null, dragging = false;
+
+  function stream() { return $('stream').value; }
+
+  function call(params) {
+    var qs = Object.keys(params).map(function (k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    }).join('&');
+    return fetch('/api/volume?' + qs, { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j.error) throw new Error(j.error); render(j); $('err').textContent = ''; })
+      .catch(function (e) { $('err').textContent = 'Falhou: ' + e.message; });
+  }
+
+  function act(action, extra) {
+    var p = { stream: stream(), action: action };
+    if ($('keyMode').checked) p.mode = 'key';
+    for (var k in extra || {}) p[k] = extra[k];
+    if (navigator.vibrate) navigator.vibrate(15);
+    return call(p);
+  }
+
+  var names = { music: 'Mídia', call: 'Chamada', ring: 'Toque', notification: 'Notificação',
+                alarm: 'Alarme', system: 'Sistema', accessibility: 'Acessibilidade' };
+
+  function render(j) {
+    state = j;
+    $('dot').className = 'dot on';
+    $('dev').textContent = j.device + ' · Android ' + j.android;
+    var s = j.streams[stream()];
+    if (s) {
+      $('cur').textContent = s.cur;
+      $('max').textContent = s.max;
+      $('fill').style.width = (100 * s.cur / s.max) + '%';
+      if (!dragging) { $('slider').max = s.max; $('slider').value = s.cur; }
+      $('mute').classList.toggle('on', !!s.muted);
+      $('mute').textContent = s.muted ? 'Mudo (ativo)' : 'Mudo';
+    }
+    var html = '<b>Todos os volumes da central:</b><br>';
+    for (var k in j.streams) {
+      var v = j.streams[k];
+      html += (names[k] || k) + ': <b>' + v.cur + '/' + v.max + '</b>' + (v.muted ? ' (mudo)' : '') + '<br>';
+    }
+    $('all').innerHTML = html;
+  }
+
+  function poll() {
+    fetch('/api/status', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () { $('dot').className = 'dot'; $('dev').textContent = 'Sem conexão com a central'; });
+  }
+
+  // Segurar o botão repete a ação.
+  function holdable(el, fn) {
+    var t1, t2;
+    function stop() { clearTimeout(t1); clearInterval(t2); }
+    el.addEventListener('pointerdown', function (e) {
+      e.preventDefault(); fn();
+      t1 = setTimeout(function () { t2 = setInterval(fn, 150); }, 400);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) { el.addEventListener(ev, stop); });
+  }
+  holdable($('up'), function () { act('up'); });
+  holdable($('down'), function () { act('down'); });
+
+  $('mute').onclick = function () { act('mute'); };
+  $('maxBtn').onclick = function () { act('max'); };
+  $('slider').addEventListener('input', function () { dragging = true; $('cur').textContent = this.value; });
+  $('slider').addEventListener('change', function () { dragging = false; act('set', { value: this.value }); });
+  $('stream').onchange = function () { if (state) render(state); };
+
+  try {
+    $('stream').value = localStorage.getItem('stream') || 'music';
+    $('keyMode').checked = localStorage.getItem('keyMode') === '1';
+  } catch (e) {}
+  $('stream').addEventListener('change', function () { try { localStorage.setItem('stream', stream()); } catch (e) {} });
+  $('keyMode').addEventListener('change', function () { try { localStorage.setItem('keyMode', this.checked ? '1' : '0'); } catch (e) {} });
+
+  poll();
+  setInterval(poll, 2000);
+</script>
+</body>
+</html>

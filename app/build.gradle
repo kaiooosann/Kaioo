@@ -1,0 +1,29 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.kaioo.volume'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.kaioo.volume'
+        // Centrais multimídia costumam rodar Android antigo: suportamos desde o 4.4.
+        minSdk 19
+        // Mantido em 28 de propósito: evita exigências de serviço em primeiro plano
+        // e permissão de notificação de versões novas, que atrapalham em centrais.
+        targetSdk 28
+        versionCode 1
+        versionName '1.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
